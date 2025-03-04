@@ -1,5 +1,8 @@
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from "vscode";
 import { exec } from "child_process";
+import * as fs from 'fs';
 
 export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<FileItem | undefined | void> = new vscode.EventEmitter<FileItem | undefined | void>();
@@ -23,34 +26,47 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
   }
   private displayDvcDiffCommand(pathName: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      exec(`dvc get . ${pathName} --rev HEAD --out ./.dvc/tmp/exps/cache/${pathName} -f`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
-        if (error) {
-          vscode.window.showErrorMessage(`DVC Error: ${stderr || error.message}`);
-          reject(error);
-          return;
-        }
+
+      const tempFilePath = path.join(os.tmpdir(), pathName);
+
+      const displayDiffLines = ()=>{
         try {
-          exec(`code -d ./${pathName} ./.dvc/tmp/exps/cache/${pathName}`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
+          exec(`code -d ./${pathName} ${tempFilePath}`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
             if (error) {
               vscode.window.showErrorMessage(`DVC Error: ${stderr || error.message}`);
               reject(error);
               return;
             }
-            console.log("Displayed!");
             resolve();
           });
         }catch (err) {
           vscode.window.showErrorMessage("Error parsing DVC output.");
           reject(err);
         }
-      });
+      };
+
+      if (fs.existsSync(tempFilePath)) {
+        console.log(tempFilePath);
+        displayDiffLines();
+      }
+
+      else{
+        exec(`dvc get . ${pathName} --rev HEAD --out ${tempFilePath} -f`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
+          if (error) {
+            vscode.window.showErrorMessage(`DVC Error: ${stderr || error.message}`);
+            reject(error);
+            return;
+          }
+          displayDiffLines();
+        });
+      }  
     });
   }
+
 
     // Run the `dvc diff HEAD^` command and capture modified files
     private runDvcDiffCommand(): Promise<void> {
         return new Promise((resolve, reject) => {
-                console.log(`dvc diff HEAD --json`);
                 exec(`dvc diff HEAD --json`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
                   
                     if (error) {
@@ -84,7 +100,6 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
                         return newFile;
                       })
                       .filter(file => file.name.trim() !== "");
-                        console.log(this.changedFiles);
                         resolve();
                     } catch (err) {
                       vscode.window.showErrorMessage("Error parsing DVC output.");
