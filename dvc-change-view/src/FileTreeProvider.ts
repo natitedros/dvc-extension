@@ -29,19 +29,31 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
 
       const tempFilePath = path.join(os.tmpdir(), pathName);
 
+      const isImageFile = (filePath: string): boolean => {
+        const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'];
+        const ext = path.extname(filePath).toLowerCase();
+        return imageExtensions.includes(ext);
+      };
+
       const displayDiffLines = ()=>{
-        try {
-          exec(`code -d ./${pathName} ${tempFilePath}`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
-            if (error) {
-              vscode.window.showErrorMessage(`DVC Error: ${stderr || error.message}`);
-              reject(error);
-              return;
-            }
-            resolve();
-          });
-        }catch (err) {
-          vscode.window.showErrorMessage("Error parsing DVC output.");
-          reject(err);
+        if (isImageFile(pathName)) {
+          // Open custom webview for image files
+          this.openImageDiffWebview(pathName, tempFilePath);
+          resolve();
+        } else {
+          try {
+            exec(`code -d ./${pathName} ${tempFilePath}`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
+              if (error) {
+                vscode.window.showErrorMessage(`DVC Error: ${stderr || error.message}`);
+                reject(error);
+                return;
+              }
+              resolve();
+            });
+          }catch (err) {
+            vscode.window.showErrorMessage("Error parsing DVC output.");
+            reject(err);
+          }
         }
       };
 
@@ -108,6 +120,114 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
                   });
           
         });
+      }
+
+      private openImageDiffWebview(currentFilePath: string, previousFilePath: string): void {
+        const panel = vscode.window.createWebviewPanel(
+          'imageDiffViewer',
+          'Image Diff Viewer',
+          vscode.ViewColumn.One,
+          {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: [
+              vscode.Uri.file(this.workspaceRoot),
+              vscode.Uri.file(path.dirname(previousFilePath)), // Allow access to the directory of the previous file
+              vscode.Uri.file(os.tmpdir()), // Allow access to the temp directory (if needed)
+            ]
+          }
+        );
+
+        const absoluteCurrentFilePath = path.isAbsolute(currentFilePath) ? currentFilePath : path.join(this.workspaceRoot, currentFilePath);
+      
+        const currentImageSrc = panel.webview.asWebviewUri(vscode.Uri.file(absoluteCurrentFilePath)).toString();
+        const previousImageSrc = panel.webview.asWebviewUri(vscode.Uri.file(previousFilePath)).toString();
+      
+        panel.webview.html = this.getWebviewContent(currentImageSrc, previousImageSrc);
+      }
+      
+      private getWebviewContent(currentImageSrc: string, previousImageSrc: string): string {
+        return `
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Image Diff Viewer</title>
+            <style>
+              .image-container {
+                display: flex;
+                justify-content: space-around;
+              }
+
+              .side-view img {
+                max-width: 45%;
+                height: auto;
+              }
+
+              .overlay-view {
+                display: none; /* Initially hidden */
+                justify-content: center;
+                align-items: center;
+                position: relative;
+                width: 100%;
+                height: 100%;
+              }
+
+              .overlay-view .image-wrapper {
+                position: relative;
+                width: 100%;
+                height: auto;
+                aspect-ratio: 16 / 9;
+              }
+
+              .overlay-view img {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: auto;
+                opacity: 0.5;
+              }
+
+              .overlay-view img:last-child {
+                opacity: 0.5; /* Ensure both images have the same opacity */
+              }
+              .button-container {
+                text-align: center;
+                margin: 20px;
+              } 
+            </style>
+          </head>
+          <body>
+            <div class="button-container">
+              <button onclick="showSideBySide()">Side View</button>
+              <button onclick="showOverlay()">Overlay View</button>
+            </div>
+            <div class="image-container side-view" id="side-by-side-view">
+              <img src="${currentImageSrc}" alt="Current Image">
+              <img src="${previousImageSrc}" alt="Previous Image">
+            </div>
+            <div class="image-container overlay-view" id="overlay-view">
+              <div class="image-wrapper">
+                <img src="${currentImageSrc}" alt="Current Image Binary">
+                <img src="${previousImageSrc}" alt="Previous Image Binary">
+              </div>
+            </div>
+            <script>
+              function showSideBySide() {
+                  document.getElementById('side-by-side-view').style.display = 'flex';
+                  document.getElementById('overlay-view').style.display = 'none';
+                }
+
+                function showOverlay() {
+                  document.getElementById('side-by-side-view').style.display = 'none';
+                  document.getElementById('overlay-view').style.display = 'flex';
+                }
+            </script>
+          </body>
+          </html>
+        `;
       }
 
   getTreeItem(element: FileItem): vscode.TreeItem {
