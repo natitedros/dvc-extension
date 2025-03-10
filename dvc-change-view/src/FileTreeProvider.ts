@@ -176,19 +176,26 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
 
               .overlay-view .image-wrapper {
                 position: relative;
-                width: 100%;
+                width: auto;
                 height: auto;
-                aspect-ratio: 16 / 9;
               }
 
               .overlay-view img {
                 position: absolute;
                 top: 0;
                 left: 0;
-                width: 100%;
+                max-width: 100%;
                 height: auto;
                 opacity: 0.5;
               }
+                canvas {
+                  position: absolute;
+                  top: 0;
+                  left: 0;
+                  max-width: 100%;
+                  height: auto;
+                  opacity: 0.5;
+                }
 
               .overlay-view img:last-child {
                 opacity: 0.5; /* Ensure both images have the same opacity */
@@ -210,8 +217,9 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
             </div>
             <div class="image-container overlay-view" id="overlay-view">
               <div class="image-wrapper">
-                <img src="${currentImageSrc}" alt="Current Image Binary">
-                <img src="${previousImageSrc}" alt="Previous Image Binary">
+                <img src="${currentImageSrc}" alt="Current Image Overlay" id="current-image">
+                <img src="${previousImageSrc}" alt="Previous Image Overlay" id="previous-image">
+                <canvas id="comparison-canvas"></canvas>
               </div>
             </div>
             <script>
@@ -223,7 +231,75 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
                 function showOverlay() {
                   document.getElementById('side-by-side-view').style.display = 'none';
                   document.getElementById('overlay-view').style.display = 'flex';
+                  compareImages();
                 }
+
+                function compareImages() {
+                  const currentImage = document.getElementById('current-image');
+                  const previousImage = document.getElementById('previous-image');
+                  const imageWrapper = document.querySelector('.image-wrapper');
+                  const canvas = document.getElementById('comparison-canvas');
+                  const ctx = canvas.getContext('2d');
+
+                  // Set canvas dimensions to match the images
+                  canvas.width = currentImage.width;
+                  canvas.height = currentImage.height;
+
+                  const width = currentImage.naturalWidth;
+                  const height = currentImage.naturalHeight;
+
+                  // Set the image wrapper size to match the image dimensions
+                  imageWrapper.style.width = width + 'px';
+                  imageWrapper.style.height = height + 'px';
+
+                  // Draw the current image onto the canvas
+                  ctx.drawImage(currentImage, 0, 0);
+
+                  // Get the image data for the current image
+                  const currentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                  const currentPixels = currentImageData.data;
+
+                  // Draw the previous image onto the canvas
+                  ctx.drawImage(previousImage, 0, 0);
+
+                  // Get the image data for the previous image
+                  const previousImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                  const previousPixels = previousImageData.data;
+
+                  // Create a new image data for the comparison result
+                  const comparisonImageData = ctx.createImageData(canvas.width, canvas.height);
+                  const comparisonPixels = comparisonImageData.data;
+
+                  // Loop through each pixel and compare
+                  for (let i = 0; i < currentPixels.length; i += 4) {
+                    const currentRed = currentPixels[i];
+                    const currentGreen = currentPixels[i + 1];
+                    const currentBlue = currentPixels[i + 2];
+
+                    const previousRed = previousPixels[i];
+                    const previousGreen = previousPixels[i + 1];
+                    const previousBlue = previousPixels[i + 2];
+
+                    // Check if the pixels are the same
+                    if (currentRed === previousRed && currentGreen === previousGreen && currentBlue === previousBlue) {
+                      // Set pixel to green (same)
+                      comparisonPixels[i] = 0;
+                      comparisonPixels[i + 1] = 255;
+                      comparisonPixels[i + 2] = 0;
+                      comparisonPixels[i + 3] = 128; // 50% opacity
+                    } else {
+                      // Set pixel to red (different)
+                      comparisonPixels[i] = 255;
+                      comparisonPixels[i + 1] = 0;
+                      comparisonPixels[i + 2] = 0;
+                      comparisonPixels[i + 3] = 128; // 50% opacity
+                    }
+                  }
+
+                  // Draw the comparison result onto the canvas
+                  ctx.putImageData(comparisonImageData, 0, 0);
+                }
+
             </script>
           </body>
           </html>
