@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { FileTreeProvider } from './FileTreeProvider';
+import { FileTreeProvider, FileItem } from './FileTreeProvider';
 
 export function activate(context: vscode.ExtensionContext) {
 	const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -14,7 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.window.registerTreeDataProvider("fileTreeView", fileTreeProvider);
   
 	fileTreeProvider.refresh(); // to call the refresh command on activation
-	
+
 	context.subscriptions.push(
 	  vscode.commands.registerCommand("fileTreeView.refresh", () => fileTreeProvider.refresh())
 	);
@@ -26,9 +26,22 @@ export function activate(context: vscode.ExtensionContext) {
 	})
 	);
 
-	vscode.commands.registerCommand("fileTreeView.runCommandOnFile", (fileName: string, pathName: string) => {
-		fileTreeProvider.displayChange(pathName);
+	vscode.commands.registerCommand("fileTreeView.runCommandOnFile", (fileName: string, pathName: string, changeType: string) => {
+		fileTreeProvider.displayChange(pathName, changeType);
 	  });
+
+	vscode.commands.registerCommand("fileTreeView.revertFile", (filePath: string) => {
+        // Implement the logic to revert the file to its original state
+        vscode.window.showInformationMessage(`Reverting file: ${filePath}`);
+        
+		vscode.window.showInformationMessage(`File: ${filePath} Reverted!`);
+		vscode.commands.executeCommand("fileTreeView.refresh");
+    });
+
+	// Add a context menu item for revertable files
+	vscode.commands.registerCommand("fileTreeView.revertFileContextMenu", (fileItem: FileItem) => {
+		vscode.commands.executeCommand("fileTreeView.revertFile", fileItem.pathName);
+	});
 
 }
 

@@ -45,6 +45,15 @@
       {
         "command": "tree-view.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "fileTreeView.revertFile",
+        "title": "Discard/Revert to Original"
+      },
+      {
+        "command": "fileTreeView.revertFileContextMenu",
+        "title": "Discard/Revert to Original",
+        "icon": "$(discard)"
       }
     ],
     "menus": {
@@ -53,6 +62,13 @@
           "command": "fileTreeView.refresh",
           "when": "view == fileTreeView",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "fileTreeView.revertFileContextMenu",
+          "when": "view == fileTreeView && viewItem == revertableFile",
+          "group": "inline"
         }
       ]
     }

@@ -7,7 +7,7 @@ import * as fs from 'fs';
 export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<FileItem | undefined | void> = new vscode.EventEmitter<FileItem | undefined | void>();
   readonly onDidChangeTreeData: vscode.Event<FileItem | undefined | void> = this._onDidChangeTreeData.event;
-  private changedFiles: Array<{path: string, name: string}> = [];
+  private changedFiles: Array<{path: string, name: string, type: string}> = [];
 
   constructor(private workspaceRoot: string) {}
 
@@ -21,12 +21,12 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
   }
 
   // Get most recent file command
-  displayChange(pathName: string): void {
-    this.displayDvcDiffCommand(pathName);
+  displayChange(pathName: string, changeType: string): void {
+    this.displayDvcDiffCommand(pathName, changeType);
   }
-  private displayDvcDiffCommand(pathName: string): Promise<void> {
+  private displayDvcDiffCommand(pathName: string, changeType: string): Promise<void> {
     return new Promise((resolve, reject) => {
-
+      console.log(this.changedFiles);
       const tempFilePath = path.join(os.tmpdir(), pathName);
 
       const isImageFile = (filePath: string): boolean => {
@@ -57,12 +57,18 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
         }
       };
 
-      if (fs.existsSync(tempFilePath)) {
-        console.log(tempFilePath);
+      if (changeType === "A"){
+        const fullPath = path.join(this.workspaceRoot, pathName);
+        vscode.workspace.openTextDocument(fullPath).then(document => {
+          vscode.window.showTextDocument(document);
+      });
+      }
+
+      else if (fs.existsSync(tempFilePath)) {
         displayDiffLines();
       }
 
-      else{
+      else if (changeType === "M"){
         exec(`dvc get . ${pathName} --rev HEAD --out ${tempFilePath} -f`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
           if (error) {
             vscode.window.showErrorMessage(`DVC Error: ${stderr || error.message}`);
@@ -72,6 +78,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
           displayDiffLines();
         });
       }  
+      
     });
   }
 
@@ -89,7 +96,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
                     
                     if (!stdout.trim() || stdout.trim() === "{}") {
                       // Handle empty stdout by displaying a placeholder message
-                      this.changedFiles = [{ path: "", name: "No DVC changes detected" }];
+                      this.changedFiles = [{ path: "", name: "No DVC changes detected", type: ""}];
                       resolve();
                       return;
                     }
@@ -97,18 +104,23 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
                     try {
                       const diffData = JSON.parse(stdout); // Parse the JSON output
                       this.changedFiles = [
-                        ...diffData["added"],
-                        ...diffData["modified"],
-                        ...diffData["deleted"],
-                        ...diffData["renamed"]
-                    //   ];
+                        ...(diffData["added"] as {path:string}[]).map(file=>({
+                          ...file,
+                          type:"A"
+                        })),
+                        ...(diffData["modified"] as {path:string}[]).map(file=>({
+                          ...file,
+                          type:"M"
+                        })),
+                        // ...diffData["deleted"],
+                        // ...diffData["renamed"]
                       ].map((file) => {
                         // find the position of the last double slash 
                         // and save the substring after the double slash
                         const lastSlashIndex = file.path.lastIndexOf("\\");
                         const fileName = lastSlashIndex === -1 ? file.path : file.path.substring(lastSlashIndex + 1);
                         const pathName = file.path.replace(/\\/g, "/");
-                        const newFile = {path: pathName, name: fileName};
+                        const newFile = {path: pathName, name: fileName, type: file.type};
                         return newFile;
                       })
                       .filter(file => file.name.trim() !== "");
@@ -316,19 +328,21 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
       }
 
       if (this.changedFiles.length === 1 && this.changedFiles[0].name === "No DVC changes detected") {
-        return Promise.resolve([new FileItem("No DVC changes detected", vscode.TreeItemCollapsibleState.None, "")]);
+        return Promise.resolve([new FileItem("No DVC changes detected", vscode.TreeItemCollapsibleState.None, "", "")]);
       }
 
-      return Promise.resolve(this.changedFiles.map(file => new FileItem(file.name, vscode.TreeItemCollapsibleState.None, file.path)));
+      return Promise.resolve(this.changedFiles.map(file => new FileItem(file.name, vscode.TreeItemCollapsibleState.None, file.path, file.type)));
     }
 
 }
 
-class FileItem extends vscode.TreeItem {
+export class FileItem extends vscode.TreeItem {
     constructor(
         public readonly fileName: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly pathName: string
+        public readonly pathName: string,
+        public readonly changeType: string
+
       ) {
         super(fileName, collapsibleState);
         this.tooltip = fileName;
@@ -338,8 +352,12 @@ class FileItem extends vscode.TreeItem {
           this.command = {
             command: "fileTreeView.runCommandOnFile",
             title: "Run Command",
-            arguments: [fileName, pathName]
+            arguments: [fileName, pathName, changeType]
           };
+
+          this.contextValue = "revertableFile";
+        } else {
+          this.contextValue = undefined;
         }
         
       }
