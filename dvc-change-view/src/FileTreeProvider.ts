@@ -20,13 +20,44 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
       });
   }
 
+  revert(filePath: string, fileType: string): void {
+    if (fileType === "M"){
+      exec(`dvc get . ${filePath} --rev HEAD --out ${filePath} -f`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
+        if (error) {
+          vscode.window.showErrorMessage(`DVC Error: ${stderr || error.message}`);
+          return;
+        }
+        this.refresh();
+      });
+    }
+    else if (fileType === "A") {
+      // Show a warning dialog to confirm deletion
+      vscode.window.showWarningMessage(
+          `Are you sure you want to delete the file "${path.basename(filePath)}"?`,
+          { modal: true },
+          'Yes', 'No'
+      ).then((selection) => {
+          if (selection === 'Yes') {
+              // Delete the file
+              fs.unlink(path.join(this.workspaceRoot, filePath), (err) => {
+                  if (err) {
+                      vscode.window.showErrorMessage(`Failed to delete file: ${err.message}`);
+                  } else {
+                      vscode.window.showInformationMessage(`File "${path.basename(filePath)}" deleted successfully.`);
+                      this.refresh();
+                  }
+              });
+          }
+      });
+  }
+  }
+
   // Get most recent file command
   displayChange(pathName: string, changeType: string): void {
     this.displayDvcDiffCommand(pathName, changeType);
   }
   private displayDvcDiffCommand(pathName: string, changeType: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      console.log(this.changedFiles);
       const tempFilePath = path.join(os.tmpdir(), pathName);
 
       const isImageFile = (filePath: string): boolean => {
@@ -68,7 +99,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
         displayDiffLines();
       }
 
-      else if (changeType === "M"){
+      else if (changeType === "M") {
         exec(`dvc get . ${pathName} --rev HEAD --out ${tempFilePath} -f`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
           if (error) {
             vscode.window.showErrorMessage(`DVC Error: ${stderr || error.message}`);
@@ -112,8 +143,14 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
                           ...file,
                           type:"M"
                         })),
-                        // ...diffData["deleted"],
-                        // ...diffData["renamed"]
+                        ...(diffData["deleted"] as {path:string}[]).map(file=>({
+                          ...file,
+                          type:"D"
+                        })),
+                        ...(diffData["renamed"] as {path:string}[]).map(file=>({
+                          ...file,
+                          type:"R"
+                        })),
                       ].map((file) => {
                         // find the position of the last double slash 
                         // and save the substring after the double slash

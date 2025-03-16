@@ -30,17 +30,15 @@ export function activate(context: vscode.ExtensionContext) {
 		fileTreeProvider.displayChange(pathName, changeType);
 	  });
 
-	vscode.commands.registerCommand("fileTreeView.revertFile", (filePath: string) => {
+	vscode.commands.registerCommand("fileTreeView.revertFile", async (fileItem: FileItem) => {
         // Implement the logic to revert the file to its original state
-        vscode.window.showInformationMessage(`Reverting file: ${filePath}`);
-        
-		vscode.window.showInformationMessage(`File: ${filePath} Reverted!`);
-		vscode.commands.executeCommand("fileTreeView.refresh");
+        await fileTreeProvider.revert(fileItem.pathName, fileItem.changeType);
+		vscode.window.showInformationMessage(`File: ${fileItem.pathName} Reverted!`);
     });
 
 	// Add a context menu item for revertable files
 	vscode.commands.registerCommand("fileTreeView.revertFileContextMenu", (fileItem: FileItem) => {
-		vscode.commands.executeCommand("fileTreeView.revertFile", fileItem.pathName);
+		vscode.commands.executeCommand("fileTreeView.revertFile", fileItem);
 	});
 
 }
