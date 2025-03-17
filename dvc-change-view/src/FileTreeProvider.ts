@@ -198,161 +198,300 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
       private getWebviewContent(currentImageSrc: string, previousImageSrc: string): string {
         return `
           <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Image Diff Viewer</title>
-            <style>
-              .image-container {
-                display: flex;
-                justify-content: space-around;
-              }
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Image Diff Viewer</title>
+          <style>
+            .image-container {
+              display: flex;
+              justify-content: space-around;
+            }
 
-              .side-view img {
-                max-width: 45%;
-                height: auto;
-              }
+            .side-view img {
+              max-width: 45%;
+              height: auto;
+            }
 
-              .overlay-view {
-                display: none; /* Initially hidden */
-                justify-content: center;
-                align-items: center;
-                position: relative;
-                width: 100%;
-                height: 100%;
-              }
+            .overlay-view, .binary-mask-view {
+              display: none; /* Initially hidden */
+              justify-content: center;
+              align-items: center;
+              position: relative;
+              width: 100%;
+              height: 100%;
+            }
 
-              .overlay-view .image-wrapper {
-                position: relative;
-                width: auto;
-                height: auto;
-              }
+            .overlay-view .image-wrapper, .binary-mask-view .image-wrapper {
+              position: relative;
+              width: auto;
+              height: auto;
+            }
 
-              .overlay-view img {
-                position: absolute;
-                top: 0;
-                left: 0;
-                max-width: 100%;
-                height: auto;
-                opacity: 0.5;
-              }
-                canvas {
-                  position: absolute;
-                  top: 0;
-                  left: 0;
-                  max-width: 100%;
-                  height: auto;
-                  opacity: 0.5;
-                }
+            .overlay-view img {
+              position: absolute;
+              top: 0;
+              left: 0;
+              max-width: 100%;
+              height: auto;
+              opacity: 0.5;
+            }
 
-              .overlay-view img:last-child {
-                opacity: 0.5; /* Ensure both images have the same opacity */
-              }
-              .button-container {
-                text-align: center;
-                margin: 20px;
-              } 
-            </style>
-          </head>
-          <body>
-            <div class="button-container">
-              <button onclick="showSideBySide()">Side View</button>
-              <button onclick="showOverlay()">Overlay View</button>
+            canvas {
+              position: relative;
+              top: 0;
+              left: 0;
+              max-width: 100%;
+              height: auto;
+            }
+
+            .overlay-view img:last-child {
+              opacity: 0.5; /* Ensure both images have the same opacity */
+            }
+            
+            .button-container {
+              text-align: center;
+              margin: 20px;
+            } 
+            
+            .slider-container {
+              text-align: center;
+              margin: 20px;
+              display: none;
+            }
+            
+            .slider-container input {
+              width: 300px;
+              outline: none;
+              border: none;
+            }
+            
+            .slider-value {
+              display: inline-block;
+              width: 50px;
+              text-align: center;
+            }
+
+            .slider-container input:focus {
+              outline: none;
+              border: none;
+            }
+
+          </style>
+        </head>
+        <body>
+          <div class="button-container">
+            <button onclick="showSideBySide()">Side View</button>
+            <button onclick="showOverlay()">Overlay View</button>
+            <button onclick="showBinaryMask()">Binary Mask</button>
+          </div>
+          <div class="slider-container" id="threshold-slider-container">
+            <label for="threshold">Threshold: </label>
+            <input type="range" id="threshold" min="0" max="100" value="50" step="1" oninput="updateThreshold(this.value)">
+            <span class="slider-value" id="threshold-value">0.50</span>
+          </div>
+          <div class="image-container side-view" id="side-by-side-view">
+            <img src="${currentImageSrc}" alt="Current Image">
+            <img src="${previousImageSrc}" alt="Previous Image">
+          </div>
+          <div class="image-container overlay-view" id="overlay-view">
+            <div class="image-wrapper">
+              <img src="${currentImageSrc}" alt="Current Image Overlay" id="current-image">
+              <img src="${previousImageSrc}" alt="Previous Image Overlay" id="previous-image">
+              <canvas id="comparison-canvas"></canvas>
             </div>
-            <div class="image-container side-view" id="side-by-side-view">
-              <img src="${currentImageSrc}" alt="Current Image">
-              <img src="${previousImageSrc}" alt="Previous Image">
+          </div>
+          <div class="image-container binary-mask-view" id="binary-mask-view">
+            <div class="image-wrapper">
+              <canvas id="binary-mask-canvas"></canvas>
             </div>
-            <div class="image-container overlay-view" id="overlay-view">
-              <div class="image-wrapper">
-                <img src="${currentImageSrc}" alt="Current Image Overlay" id="current-image">
-                <img src="${previousImageSrc}" alt="Previous Image Overlay" id="previous-image">
-                <canvas id="comparison-canvas"></canvas>
-              </div>
-            </div>
-            <script>
-              function showSideBySide() {
-                  document.getElementById('side-by-side-view').style.display = 'flex';
-                  document.getElementById('overlay-view').style.display = 'none';
+          </div> 
+          <script>
+            // Load both images first to ensure dimensions are available
+            const currentImage = new Image();
+            const previousImage = new Image();
+            let threshold = 0.5;
+            
+            currentImage.onload = imageLoaded;
+            previousImage.onload = imageLoaded;
+            
+            currentImage.src = "${currentImageSrc}";
+            previousImage.src = "${previousImageSrc}";
+            
+            let imagesLoaded = 0;
+            
+            function imageLoaded() {
+              imagesLoaded++;
+              if (imagesLoaded === 2) {
+                // Both images are loaded, setup canvas dimensions
+                setupCanvas();
+              }
+            }
+            
+            function setupCanvas() {
+              const binaryCanvas = document.getElementById('binary-mask-canvas');
+              const comparisonCanvas = document.getElementById('comparison-canvas');
+              const imageWrapper = document.querySelector('.image-wrapper');
+              
+              // Set canvas dimensions to match the images
+              binaryCanvas.width = currentImage.width;
+              binaryCanvas.height = currentImage.height;
+              comparisonCanvas.width = currentImage.width;
+              comparisonCanvas.height = currentImage.height;
+              
+              // Set the image wrapper size to match the image dimensions
+              imageWrapper.style.width = currentImage.width + 'px';
+              imageWrapper.style.height = currentImage.height + 'px';
+            }
+
+            function showSideBySide() {
+              document.getElementById('side-by-side-view').style.display = 'flex';
+              document.getElementById('overlay-view').style.display = 'none';
+              document.getElementById('binary-mask-view').style.display = 'none';
+              document.getElementById('threshold-slider-container').style.display = 'none';
+            }
+
+            function showOverlay() {
+              document.getElementById('side-by-side-view').style.display = 'none';
+              document.getElementById('overlay-view').style.display = 'flex';
+              document.getElementById('binary-mask-view').style.display = 'none';
+              document.getElementById('threshold-slider-container').style.display = 'none';
+              compareImages();
+            }
+            
+            function showBinaryMask() {
+              document.getElementById('side-by-side-view').style.display = 'none';
+              document.getElementById('overlay-view').style.display = 'none';
+              document.getElementById('binary-mask-view').style.display = 'flex';
+              document.getElementById('threshold-slider-container').style.display = 'block';
+              generateBinaryMask(threshold);
+            }
+            
+            function updateThreshold(value) {
+              threshold = value / 100; // Convert from 0-100 to 0-1
+              document.getElementById('threshold-value').textContent = threshold.toFixed(2);
+              generateBinaryMask(threshold);
+            }
+
+            function compareImages() {
+              const canvas = document.getElementById('comparison-canvas');
+              const ctx = canvas.getContext('2d');
+
+              // Draw the current image onto the canvas
+              ctx.drawImage(currentImage, 0, 0);
+
+              // Get the image data for the current image
+              const currentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const currentPixels = currentImageData.data;
+
+              // Draw the previous image onto the canvas
+              ctx.drawImage(previousImage, 0, 0);
+
+              // Get the image data for the previous image
+              const previousImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const previousPixels = previousImageData.data;
+
+              // Create a new image data for the comparison result
+              const comparisonImageData = ctx.createImageData(canvas.width, canvas.height);
+              const comparisonPixels = comparisonImageData.data;
+
+              // Loop through each pixel and compare
+              for (let i = 0; i < currentPixels.length; i += 4) {
+                const currentRed = currentPixels[i];
+                const currentGreen = currentPixels[i + 1];
+                const currentBlue = currentPixels[i + 2];
+
+                const previousRed = previousPixels[i];
+                const previousGreen = previousPixels[i + 1];
+                const previousBlue = previousPixels[i + 2];
+
+                // Check if the pixels are the same
+                if (currentRed === previousRed && currentGreen === previousGreen && currentBlue === previousBlue) {
+                  // Set pixel to green (same)
+                  comparisonPixels[i] = 0;
+                  comparisonPixels[i + 1] = 255;
+                  comparisonPixels[i + 2] = 0;
+                  comparisonPixels[i + 3] = 128; // 50% opacity
+                } else {
+                  // Set pixel to red (different)
+                  comparisonPixels[i] = 255;
+                  comparisonPixels[i + 1] = 0;
+                  comparisonPixels[i + 2] = 0;
+                  comparisonPixels[i + 3] = 128; // 50% opacity
                 }
+              }
 
-                function showOverlay() {
-                  document.getElementById('side-by-side-view').style.display = 'none';
-                  document.getElementById('overlay-view').style.display = 'flex';
-                  compareImages();
+              // Draw the comparison result onto the canvas
+              ctx.putImageData(comparisonImageData, 0, 0);
+            }
+            
+            function generateBinaryMask(threshold) {
+              const canvas = document.getElementById('binary-mask-canvas');
+              const ctx = canvas.getContext('2d');
+              
+              // Clear the canvas
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              
+              // Draw the current image onto the canvas
+              ctx.drawImage(currentImage, 0, 0);
+              
+              // Get the image data for the current image
+              const currentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const currentPixels = currentImageData.data;
+              
+              // Draw the previous image onto the canvas
+              ctx.drawImage(previousImage, 0, 0);
+              
+              // Get the image data for the previous image
+              const previousImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const previousPixels = previousImageData.data;
+              
+              // Create a new image data for the binary mask
+              const binaryMaskData = ctx.createImageData(canvas.width, canvas.height);
+              const binaryMaskPixels = binaryMaskData.data;
+              
+              // Loop through each pixel and compare
+              for (let i = 0; i < currentPixels.length; i += 4) {
+                const currentRed = currentPixels[i];
+                const currentGreen = currentPixels[i + 1];
+                const currentBlue = currentPixels[i + 2];
+                
+                const previousRed = previousPixels[i];
+                const previousGreen = previousPixels[i + 1];
+                const previousBlue = previousPixels[i + 2];
+                
+                // Calculate difference (simple Euclidean distance)
+                const redDiff = Math.abs(currentRed - previousRed);
+                const greenDiff = Math.abs(currentGreen - previousGreen);
+                const blueDiff = Math.abs(currentBlue - previousBlue);
+                
+                // Calculate normalized difference (0-1 range)
+                const normalizedDiff = Math.sqrt(redDiff*redDiff + greenDiff*greenDiff + blueDiff*blueDiff) / Math.sqrt(3 * 255 * 255);
+                
+                // Apply threshold
+                if (normalizedDiff > threshold) {
+                  // Different - White
+                  binaryMaskPixels[i] = 255;
+                  binaryMaskPixels[i + 1] = 255;
+                  binaryMaskPixels[i + 2] = 255;
+                  binaryMaskPixels[i + 3] = 255;
+                } else {
+                  // Same - Black
+                  binaryMaskPixels[i] = 0;
+                  binaryMaskPixels[i + 1] = 0;
+                  binaryMaskPixels[i + 2] = 0;
+                  binaryMaskPixels[i + 3] = 255;
                 }
-
-                function compareImages() {
-                  const currentImage = document.getElementById('current-image');
-                  const previousImage = document.getElementById('previous-image');
-                  const imageWrapper = document.querySelector('.image-wrapper');
-                  const canvas = document.getElementById('comparison-canvas');
-                  const ctx = canvas.getContext('2d');
-
-                  // Set canvas dimensions to match the images
-                  canvas.width = currentImage.width;
-                  canvas.height = currentImage.height;
-
-                  const width = currentImage.naturalWidth;
-                  const height = currentImage.naturalHeight;
-
-                  // Set the image wrapper size to match the image dimensions
-                  imageWrapper.style.width = width + 'px';
-                  imageWrapper.style.height = height + 'px';
-
-                  // Draw the current image onto the canvas
-                  ctx.drawImage(currentImage, 0, 0);
-
-                  // Get the image data for the current image
-                  const currentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                  const currentPixels = currentImageData.data;
-
-                  // Draw the previous image onto the canvas
-                  ctx.drawImage(previousImage, 0, 0);
-
-                  // Get the image data for the previous image
-                  const previousImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                  const previousPixels = previousImageData.data;
-
-                  // Create a new image data for the comparison result
-                  const comparisonImageData = ctx.createImageData(canvas.width, canvas.height);
-                  const comparisonPixels = comparisonImageData.data;
-
-                  // Loop through each pixel and compare
-                  for (let i = 0; i < currentPixels.length; i += 4) {
-                    const currentRed = currentPixels[i];
-                    const currentGreen = currentPixels[i + 1];
-                    const currentBlue = currentPixels[i + 2];
-
-                    const previousRed = previousPixels[i];
-                    const previousGreen = previousPixels[i + 1];
-                    const previousBlue = previousPixels[i + 2];
-
-                    // Check if the pixels are the same
-                    if (currentRed === previousRed && currentGreen === previousGreen && currentBlue === previousBlue) {
-                      // Set pixel to green (same)
-                      comparisonPixels[i] = 0;
-                      comparisonPixels[i + 1] = 255;
-                      comparisonPixels[i + 2] = 0;
-                      comparisonPixels[i + 3] = 128; // 50% opacity
-                    } else {
-                      // Set pixel to red (different)
-                      comparisonPixels[i] = 255;
-                      comparisonPixels[i + 1] = 0;
-                      comparisonPixels[i + 2] = 0;
-                      comparisonPixels[i + 3] = 128; // 50% opacity
-                    }
-                  }
-
-                  // Draw the comparison result onto the canvas
-                  ctx.putImageData(comparisonImageData, 0, 0);
-                }
-
-            </script>
-          </body>
-          </html>
-        `;
+              }
+              
+              // Draw the binary mask onto the canvas
+              ctx.putImageData(binaryMaskData, 0, 0);
+            }
+          </script>
+        </body>
+        </html>
+      `;
       }
 
   getTreeItem(element: FileItem): vscode.TreeItem {
