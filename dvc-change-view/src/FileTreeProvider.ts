@@ -90,9 +90,19 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
 
       if (changeType === "A"){
         const fullPath = path.join(this.workspaceRoot, pathName);
-        vscode.workspace.openTextDocument(fullPath).then(document => {
-          vscode.window.showTextDocument(document);
-      });
+        
+        const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'];
+        const isImage = imageExtensions.includes(path.extname(fullPath).toLowerCase());
+        if (isImage) {
+         
+          vscode.commands.executeCommand('vscode.open', vscode.Uri.file(fullPath));
+        
+        } else {
+
+          vscode.workspace.openTextDocument(fullPath).then(document => {
+            vscode.window.showTextDocument(document);
+          });
+        }
       }
 
       else if (fs.existsSync(tempFilePath)) {
