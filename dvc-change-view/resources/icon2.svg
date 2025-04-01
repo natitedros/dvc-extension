@@ -1,0 +1,11 @@
+<svg width="120" height="120" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="120" height="120" rx="20" fill="transparent"/>
+  <path d="M15 40H35L50 10L65 70L75 40H85" stroke="#C586C0" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="15" cy="40" r="6" fill="#C586C0"/>
+  <circle cx="35" cy="40" r="6" fill="#C586C0"/>
+  <circle cx="50" cy="10" r="6" fill="#C586C0"/>
+  <circle cx="65" cy="70" r="6" fill="#C586C0"/>
+  <circle cx="75" cy="40" r="6" fill="#C586C0"/>
+  <circle cx="85" cy="40" r="6" fill="#C586C0"/>
+    <text x="50" y="95" fill="#C586C0" font-size="25" font-family="Consolas, monospace" font-weight="bold" text-anchor="middle">DVC</text>
+</svg>
