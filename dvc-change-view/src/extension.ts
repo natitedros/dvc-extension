@@ -11,14 +11,65 @@ export function activate(context: vscode.ExtensionContext) {
 	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
 	const fileTreeProvider = new FileTreeProvider(workspaceRoot);
   
-	vscode.window.registerTreeDataProvider("fileTreeView", fileTreeProvider);
+  // Register the tree view with the provider
+	const treeView = vscode.window.createTreeView("fileTreeView", { 
+    treeDataProvider: fileTreeProvider,
+    showCollapseAll: true
+  });
+
+  // Set initial badge (which will be 0) when extension activates
+  updateTreeViewBadge(treeView, fileTreeProvider.getChangedFilesCount());
+  
+  // Listen for file count changes and update the badge
+  fileTreeProvider.onDidChangeFileCount(count => {
+    updateTreeViewBadge(treeView, count);
+  });
+  
+  // Helper function to update the badge with count
+  function updateTreeViewBadge(treeView: vscode.TreeView<FileItem>, count: number) {
+    if (count > 0) {
+      // Set badge with count and color
+      treeView.badge = {
+        tooltip: `${count} changed file${count === 1 ? '' : 's'}`,
+        value: count
+      };
+    } else {
+      // Clear the badge when no changes
+      treeView.badge = undefined;
+    }
+  }
   
 	fileTreeProvider.refresh(); // to call the refresh command on activation
 
 	context.subscriptions.push(
 	  vscode.commands.registerCommand("fileTreeView.refresh", () => fileTreeProvider.refresh())
 	);
+	
+	let refreshTimeout: NodeJS.Timeout | null = null;
+    const debouncedRefresh = () => {
+        if (refreshTimeout) {
+            clearTimeout(refreshTimeout);
+        }
+        refreshTimeout = setTimeout(() => {
+            fileTreeProvider.refresh();
+            refreshTimeout = null;
+        }, 1000); // 1 second delay
+    };
 
+    // Modified file watcher with debouncing
+    const fileWatcher = vscode.workspace.createFileSystemWatcher("**/*");
+    
+    fileWatcher.onDidChange(() => {
+        debouncedRefresh();
+    });
+
+    fileWatcher.onDidCreate(() => {
+        debouncedRefresh();
+    });
+
+    fileWatcher.onDidDelete(() => {
+        debouncedRefresh();
+    });
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('dvc-change-view.helloWorld', () => {

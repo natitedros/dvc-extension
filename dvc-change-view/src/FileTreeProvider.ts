@@ -8,13 +8,30 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<FileItem | undefined | void> = new vscode.EventEmitter<FileItem | undefined | void>();
   readonly onDidChangeTreeData: vscode.Event<FileItem | undefined | void> = this._onDidChangeTreeData.event;
   private changedFiles: Array<{path: string, name: string, type: string}> = [];
+  
+  // Add event emitter for notifying about changed files count
+  private _onDidChangeFileCount: vscode.EventEmitter<number> = new vscode.EventEmitter<number>();
+  readonly onDidChangeFileCount: vscode.Event<number> = this._onDidChangeFileCount.event;
 
   constructor(private workspaceRoot: string) {}
+
+  // Get the count of changed files (excluding placeholders)
+  getChangedFilesCount(): number {
+    // Don't count "No DVC changes detected" placeholder as a change
+    if (this.changedFiles.length === 1 && this.changedFiles[0].name === "No DVC changes detected") {
+      return 0;
+    }
+    return this.changedFiles.length;
+  }
 
    // Refresh the tree view and run a terminal command
    refresh(): void {
     this.runDvcDiffCommand().then(() => {
         this._onDidChangeTreeData.fire(); // Refresh the tree view after fetching modified files
+        
+        // Emit the updated file count
+        const fileCount = this.getChangedFilesCount();
+        this._onDidChangeFileCount.fire(fileCount);
       }).catch((err) => {
         vscode.window.showErrorMessage("Error refreshing tree view: " + err);
       });
@@ -27,7 +44,6 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
           vscode.window.showErrorMessage(`DVC Error: ${stderr || error.message}`);
           return;
         }
-        this.refresh();
       });
     }
     else if (fileType === "A") {
@@ -44,7 +60,6 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
                       vscode.window.showErrorMessage(`Failed to delete file: ${err.message}`);
                   } else {
                       vscode.window.showInformationMessage(`File "${path.basename(filePath)}" deleted successfully.`);
-                      this.refresh();
                   }
               });
           }
