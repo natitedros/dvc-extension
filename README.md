@@ -36,7 +36,7 @@ A Visual Studio Code extension for tracking file changes in DVC-tracked files. T
 4. Build and install the extension:
    ```sh
    npm run compile
-   code --install-extension dvc-extension.vsix
+   open extension.ts and press F5
    ```
 
 ## Usage
