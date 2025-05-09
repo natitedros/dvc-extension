@@ -7,10 +7,10 @@ A Visual Studio Code extension for tracking file changes in DVC-tracked files. T
 - 📂 **Sidebar View** – Displays DVC-tracked files and their change status.
 - 🔄 **Refresh Button** – Updates the file tracking status with the latest changes.
 - 📝 **Line-by-Line Diff View** – Shows line-by-line differences in the editor window when a file is selected. 
-https://github.com/user-attachments/assets/b46b22ea-efcd-4b26-b6a7-91e541dc6f78
+   [![Line-By-Line]](https://github.com/user-attachments/assets/b46b22ea-efcd-4b26-b6a7-91e541dc6f78)
 
 - 📝 **Image Diff View** – Shows Pixel-by-pixel differences in the editor window when the image is selected using three views: Side-by-side, Overlay, and Binary Masking.
-https://github.com/user-attachments/assets/132c96a2-2f31-447a-b77f-0452d01659d2
+   [![Image-Pixel-Diff]](https://github.com/user-attachments/assets/132c96a2-2f31-447a-b77f-0452d01659d2)
 
 - 🎨 **Custom Icon** – Unique extension icon for easy identification.
 
