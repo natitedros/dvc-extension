@@ -5,6 +5,10 @@
   "version": "0.0.1",
   "icon": "resources/icon2.png",
   "publisher": "NatnaelDesta",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/natitedros/dvc-extension.git"
+  },
   "galleryBanner.color": {
     "color": "#21214c",
     "theme": "dark"
