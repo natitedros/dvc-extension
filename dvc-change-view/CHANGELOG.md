@@ -1,9 +1,14 @@
 # Change Log
 
-All notable changes to the "dvc-change-view" extension will be documented in this file.
+## [1.0.0] - 2025-05-09
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
-## [Unreleased]
+### Added
 
 - Initial release
+- Basic diff view for DVC-tracked files
+- File history navigation
+- Integration with DVC commands
+- Status bar indicators for tracking state
+- Support for common data science file formats
+- Quick access to DVC logs and metrics
+- Basic configuration options

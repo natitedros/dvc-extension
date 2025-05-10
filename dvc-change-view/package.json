@@ -3,6 +3,11 @@
   "displayName": "dvc-change-view",
   "description": "Display changes on dvc tracked files",
   "version": "0.0.1",
+  "icon": "resources/icon2.png",
+  "galleryBanner.color": {
+    "color": "#21214c",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.96.4"
   },
