@@ -4,6 +4,7 @@
   "description": "Display changes on dvc tracked files",
   "version": "0.0.1",
   "icon": "resources/icon2.png",
+  "publisher": "Natnael Desta",
   "galleryBanner.color": {
     "color": "#21214c",
     "theme": "dark"
