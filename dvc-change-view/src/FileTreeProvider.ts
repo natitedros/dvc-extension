@@ -33,7 +33,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
         const fileCount = this.getChangedFilesCount();
         this._onDidChangeFileCount.fire(fileCount);
       }).catch((err) => {
-        vscode.window.showErrorMessage("Error refreshing tree view: " + err);
+        console.log(err);
       });
   }
 
@@ -145,8 +145,8 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
                 exec(`dvc diff HEAD --json`, { cwd: this.workspaceRoot,  }, (error, stdout, stderr) => {
                   
                     if (error) {
-                      vscode.window.showErrorMessage(`DVC Error: ${stderr || error.message}`);
-                      reject(error);
+                      this.changedFiles = [{ path: "", name: stderr, type: ""}];
+                      resolve();
                       return;
                     }
                     
