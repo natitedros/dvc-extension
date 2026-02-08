@@ -41,35 +41,48 @@ export function activate(context: vscode.ExtensionContext) {
   
 	fileTreeProvider.refresh(); // to call the refresh command on activation
 
+	// Manual refresh command - always works even in error state (to allow retry)
 	context.subscriptions.push(
-	  vscode.commands.registerCommand("fileTreeView.refresh", () => fileTreeProvider.refresh())
+	  vscode.commands.registerCommand("fileTreeView.refresh", () => {
+      // If there's an error, treat this as a retry
+      if (fileTreeProvider.shouldSkipRefresh()) {
+        fileTreeProvider.retryAfterError();
+      } else {
+        fileTreeProvider.refresh();
+      }
+    })
 	);
 	
 	let refreshTimeout: NodeJS.Timeout | null = null;
-    const debouncedRefresh = () => {
-        if (refreshTimeout) {
-            clearTimeout(refreshTimeout);
-        }
-        refreshTimeout = setTimeout(() => {
-            fileTreeProvider.refresh();
-            refreshTimeout = null;
-        }, 1000); // 1 second delay
-    };
+  const debouncedRefresh = () => {
+    if (refreshTimeout) {
+      clearTimeout(refreshTimeout);
+    }
+    refreshTimeout = setTimeout(() => {
+      // IMPORTANT: Check error state before auto-refresh
+      if (!fileTreeProvider.shouldSkipRefresh()) {
+        fileTreeProvider.refresh();
+      } else {
+        console.log('Auto-refresh paused due to DVC error. Use manual refresh or "Retry" to resume.');
+      }
+      refreshTimeout = null;
+    }, 1000); // 1 second delay
+  };
 
-    // Modified file watcher with debouncing
-    const fileWatcher = vscode.workspace.createFileSystemWatcher("**/*");
-    
-    fileWatcher.onDidChange(() => {
-        debouncedRefresh();
-    });
+  // Modified file watcher with debouncing
+  const fileWatcher = vscode.workspace.createFileSystemWatcher("**/*");
+  
+  fileWatcher.onDidChange(() => {
+    debouncedRefresh();
+  });
 
-    fileWatcher.onDidCreate(() => {
-        debouncedRefresh();
-    });
+  fileWatcher.onDidCreate(() => {
+    debouncedRefresh();
+  });
 
-    fileWatcher.onDidDelete(() => {
-        debouncedRefresh();
-    });
+  fileWatcher.onDidDelete(() => {
+    debouncedRefresh();
+  });
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('dvc-change-view.helloWorld', () => {
@@ -92,6 +105,15 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.executeCommand("fileTreeView.revertFile", fileItem);
 	});
 
+  // Optional: Add a command to manually retry after error
+  context.subscriptions.push(
+    vscode.commands.registerCommand("fileTreeView.retryAfterError", () => {
+      fileTreeProvider.retryAfterError();
+    })
+  );
+
+  // Dispose the file tree provider when extension deactivates
+  context.subscriptions.push(fileTreeProvider);
 }
 
 export function deactivate() {}
