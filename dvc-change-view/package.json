@@ -4,7 +4,7 @@
   "description": "Display changes on dvc tracked files",
   "version": "1.1.0",
   "icon": "resources/icon2.png",
-  "publisher": "NatnaelDesta",
+  "publisher": "natnaeldesta",
   "repository": {
     "type": "git",
     "url": "https://github.com/natitedros/dvc-extension.git"
