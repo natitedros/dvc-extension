@@ -10,6 +10,9 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
   readonly onDidChangeTreeData: vscode.Event<FileItem | undefined | void> = this._onDidChangeTreeData.event;
   private changedFiles: Array<{path: string, name: string, type: string}> = [];
   private venvManager: VirtualEnvironmentManager;
+  private outputChannel: vscode.OutputChannel;
+  private hasError: boolean = false; 
+  private errorCount: number = 0;
   
   // Add event emitter for notifying about changed files count
   private _onDidChangeFileCount: vscode.EventEmitter<number> = new vscode.EventEmitter<number>();
@@ -17,33 +20,90 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
 
   constructor(private workspaceRoot: string) {
     this.venvManager = new VirtualEnvironmentManager(workspaceRoot);
-    
+    this.outputChannel = vscode.window.createOutputChannel("DVC Extension");
+
     // Initialize by detecting virtual environment
     this.initializeVirtualEnvironment();
   }
 
-  private async initializeVirtualEnvironment(): Promise<void> {
-    try {
-      const venvInfo = await this.venvManager.detectVirtualEnvironment();
-      const isDvcAvailable = await this.venvManager.isDvcAvailable();
-      
-      if (!isDvcAvailable) {
-        vscode.window.showWarningMessage(
-          'DVC is not available in the detected environment. Please ensure DVC is installed.',
-          'Install DVC',
-          'Ignore'
-        ).then((selection) => {
-          if (selection === 'Install DVC') {
-            vscode.env.openExternal(vscode.Uri.parse('https://dvc.org/doc/install'));
-          }
-        });
-      } else {
-        console.log(`DVC detected in ${venvInfo.type} environment`);
-      }
-    } catch (error) {
-      console.error('Error initializing virtual environment:', error);
-    }
+  public shouldSkipRefresh(): boolean {
+    return this.hasError;
   }
+
+  public retryAfterError(): void {
+    this.hasError = false;
+    this.errorCount = 0;
+    this.outputChannel.appendLine(`[${new Date().toLocaleTimeString()}] Retrying DVC operations...`);
+    this.refresh();
+  }
+
+  
+
+  // Helper method to show detailed error
+  private showDetailedError(error: Error, context: string): void {
+    const shortMsg = this.venvManager.getDvcErrorMessage(error);
+    const detailedMsg = this.venvManager.getDvcErrorDetails(error);
+    
+    // Write to output channel
+    this.outputChannel.appendLine(`\n[${new Date().toLocaleTimeString()}] ${context}`);
+    this.outputChannel.appendLine(detailedMsg);
+    this.outputChannel.appendLine(''); // Empty line for readability
+    
+    // Set error state
+    this.hasError = true;
+    this.errorCount++;
+
+    // Write to output channel
+    this.outputChannel.appendLine(`\n[${new Date().toLocaleTimeString()}] ERROR in ${context}`);
+    this.outputChannel.appendLine(detailedMsg);
+    this.outputChannel.appendLine('--- Auto-refresh paused. Click "Retry" after fixing the issue. ---\n');
+    
+    // Show notification with action buttons
+    vscode.window.showErrorMessage(
+      shortMsg, 
+      'Show Fix', 
+      'Retry',
+      'Dismiss'
+    ).then((selection) => {
+      if (selection === 'Show Fix') {
+        this.outputChannel.show(); // Show the output panel
+      } else if (selection === 'Retry') {
+        this.retryAfterError();
+      }
+    });
+  }
+
+  public dispose(): void {
+    this.outputChannel.dispose();
+  }
+  
+  private async initializeVirtualEnvironment(): Promise<void> {
+  try {
+    const venvInfo = await this.venvManager.detectVirtualEnvironment();
+    const isDvcAvailable = await this.venvManager.isDvcAvailable();
+    
+    if (!isDvcAvailable) {
+      this.hasError = true; // Set error state
+      vscode.window.showWarningMessage(
+        'DVC is not available in the detected environment. Auto-refresh paused.',
+        'Install DVC',
+        'Retry',
+        'Ignore'
+      ).then((selection) => {
+        if (selection === 'Install DVC') {
+          vscode.env.openExternal(vscode.Uri.parse('https://dvc.org/doc/install'));
+        } else if (selection === 'Retry') {
+          this.retryAfterError();
+        }
+      });
+    } else {
+      console.log(`DVC detected in ${venvInfo.type} environment`);
+      this.hasError = false; // Clear error state if DVC is available
+    }
+  } catch (error) {
+    this.showDetailedError(error as Error, 'Virtual Environment Initialization');
+  }
+}
 
   // Get the count of changed files (excluding placeholders)
   getChangedFilesCount(): number {
@@ -56,6 +116,13 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
 
    // Refresh the tree view and run a terminal command
    refresh(): void {
+
+    // Skip refresh if in error state (unless this is a manual retry)
+    if (this.hasError && this.errorCount > 0) {
+      console.log('Skipping auto-refresh due to DVC error state');
+      return;
+    }
+
     this.runDvcDiffCommand().then(() => {
         this._onDidChangeTreeData.fire(); // Refresh the tree view after fetching modified files
         
@@ -75,7 +142,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
           vscode.window.showErrorMessage(`DVC Error: ${result.stderr}`);
         }
       } catch (error: any) {
-        vscode.window.showErrorMessage(`DVC Error: ${error.message}`);
+        this.showDetailedError(error, 'DVC Revert File');
       }
     }
     else if (fileType === "A") {
@@ -156,7 +223,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
         }
         displayDiffLines();
       } catch (error: any) {
-        vscode.window.showErrorMessage(`DVC Error: ${error.message}`);
+        this.showDetailedError(error, 'DVC Display Change');
       }
     }
   }
@@ -206,10 +273,20 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileItem> {
           return newFile;
         })
         .filter(file => file.name.trim() !== "");
-      } catch (parseError) {
-        vscode.window.showErrorMessage("Error parsing DVC output.");
-        this.changedFiles = [{ path: "", name: "Error parsing DVC output", type: ""}];
-      }
+      } catch (error) {
+          this.showDetailedError(error as Error, 'DVC Diff Command');
+          
+          // Show error indicator in the tree
+          this.changedFiles = [{ 
+            path: "", 
+            name: `⚠ DVC Error (auto-refresh paused) - Click "Show Fix" or "Retry" in notification`, 
+            type: ""
+          }];
+          
+          // Still fire the change event to show the error message in tree
+          this._onDidChangeTreeData.fire();
+          this._onDidChangeFileCount.fire(0);
+        }
     } catch (error: any) {
       console.error('DVC command failed:', error);
       this.changedFiles = [{ path: "", name: `DVC Error: ${error.message}`, type: ""}];
